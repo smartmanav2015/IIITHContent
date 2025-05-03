@@ -19,6 +19,7 @@ import pickle
 
 # Current_path stores absolute path of the file from where it runs. 
 current_path = os.path.dirname(os.path.abspath(__file__))
+#current_path = os.getcwd()
 
 #1) The below function is used to detect faces in the given image.
 #2) It returns only one image which has maximum area out of all the detected faces in the photo.
@@ -26,10 +27,17 @@ current_path = os.path.dirname(os.path.abspath(__file__))
 
 def detected_face(image):
     eye_haar = current_path + '/haarcascade_eye.xml'
-    face_haar = current_path + '/haarcascade_frontalface_default.xml'
+    face_haar = current_path + '/haarcascade_frontalface_default.xml'    
     face_cascade = cv2.CascadeClassifier(face_haar)
     eye_cascade = cv2.CascadeClassifier(eye_haar)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)    
+    
+    # Check if the image is already grayscale
+    if len(image.shape) == 2:
+        gray = image  # If grayscale, no need to convert
+    else:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  # If color, convert to grayscale
+    
     faces = face_cascade.detectMultiScale(gray, 1.3, 5)
     face_areas=[]
     images = []
@@ -39,7 +47,7 @@ def detected_face(image):
         face_areas.append(w*h)
         images.append(face_cropped)
         required_image = images[np.argmax(face_areas)]
-        required_image = Image.fromarray(required_image)
+        required_image = Image.fromarray(required_image)    
     return required_image
 
 
@@ -50,6 +58,7 @@ def detected_face(image):
 #5) For loading your model use the current_path+'your model file name', anyhow detailed example is given in comments to the function 
 #Caution: Don't change the definition or function name; for loading the model use the current_path for path example is given in comments to the function
 def get_similarity(image1, image2):
+    print(f"image1 : {image1}, image2 : {image2}")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     imgdata1 = base64.b64decode(image1)
     img1 = Image.open(io.BytesIO(imgdata1))
@@ -63,7 +72,7 @@ def get_similarity(image1, image2):
         return "Face not found"
     face1 = trnscm(det_img1).unsqueeze(0)
     face2 = trnscm(det_img2).unsqueeze(0)
-    ##########################################################################################
+	##########################################################################################
     ##Example for loading a model using weight state dictionary:                            ##
     ## feature_net = light_cnn() #Example Network                                           ##
     ## model = torch.load(current_path + '/siamese_model.t7', map_location=device)          ##
@@ -73,13 +82,22 @@ def get_similarity(image1, image2):
     ##the same path as this file, we recommend to put in the same directory                 ##
     ##########################################################################################
     ##########################################################################################
-    
+
     # YOUR CODE HERE, load the model
-    
-    # YOUR CODE HERE, return similarity measure using your model
-    
-    return 0
-    
+    model = Siamese().to(device)
+    checkpoint = torch.load(current_path + '/siamese_model.t7', map_location=device)
+    # Now load the (potentially modified) state_dict
+    model.load_state_dict(checkpoint['net_dict'], strict=False)  # strict=False allows loading even with missing keys
+    model.eval()   # Set the model to evaluation mode
+
+    with torch.no_grad():
+        output1, output2 = model(face1, face2)
+        euclidean_distance = F.pairwise_distance(output1, output2).item()
+        similarity = torch.cosine_similarity(output1, output2).item()
+
+    #return (similarity, euclidean_distance)
+    print(f"similarity : {similarity}  euclidean_distance : {euclidean_distance} ")
+    return similarity
 #1) Image captured from mobile is passed as parameter to this function in the API call, It returns the face class in the string form ex: "Person1"
 #2) The image is passed to the function in base64 encoding, Code to decode the image provided within the function
 #3) Define an object to your network here in the function and load the weight from the trained network, set it in evaluation mode
